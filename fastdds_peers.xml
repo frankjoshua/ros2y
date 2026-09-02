@@ -23,7 +23,8 @@
         <initialPeersList>
           <locator>
             <udpv4>
-              <address>100.96.218.61</address>
+              <!-- Set ROBOT_PEER in your host env (e.g. ~/.bashrc); empty = discovery finds nothing -->
+              <address>${ROBOT_PEER}</address>
             </udpv4>
           </locator>
         </initialPeersList>
