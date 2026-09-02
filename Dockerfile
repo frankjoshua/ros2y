@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y \
 # sudo. VS Code remaps its UID to the host user so bind-mounted files aren't left root-owned.
 FROM base AS dev
 ARG USERNAME=ubuntu
+# rviz_tui.py deps (dev-only tooling)
+RUN apt-get update && apt-get install -y ros-$ROS_DISTRO-nav2-msgs \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --break-system-packages --ignore-installed textual
 RUN echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 # VS Code terminals open an interactive shell that bypasses the image ENTRYPOINT, so source the ROS
