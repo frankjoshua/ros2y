@@ -80,6 +80,29 @@ docker run -it --net=host --ipc=host --pid=host frankjoshua/ros2-template
 > networks block it. If two machines can't discover each other there, run a Fast DDS Discovery
 > Server and point nodes at it with `ROS_DISCOVERY_SERVER=<host-ip>:11811`.
 
+### Reaching a robot over Tailscale/VPN (unicast peers)
+
+Multicast doesn't cross a tailnet (and flaky Wi-Fi often drops it), so this repo uses Fast DDS
+unicast discovery instead. Set the robot's IP once on your host:
+
+```
+export ROBOT_PEER=100.x.y.z   # e.g. in ~/.bashrc — the robot's Tailscale IP
+```
+
+The dev container passes `ROBOT_PEER` through (`containerEnv`) and its `postStartCommand` bakes it
+into `/tmp/fastdds_peers.xml` from the `fastdds_peers.xml` template, which
+`FASTRTPS_DEFAULT_PROFILES_FILE` points at. (Baking is needed because Humble's Fast DDS can't
+expand env vars in XML profiles; Iron+ could instead use `ROS_STATIC_PEERS=$ROBOT_PEER` directly.)
+
+Two gotchas the template already handles, for anyone adapting it:
+
+- `maxInitialPeersRange` defaults to 4, so only the robot's first few DDS participants get probed —
+  topics from later-started nodes (lidar, odom) silently never appear. The profile raises it to 32.
+- The ROS distro must match the robot's: Humble and Jazzy are not wire-compatible, and a mismatched
+  node on the same domain can make the robot's nodes leak memory on every discovery message.
+
+If `ROBOT_PEER` is unset the container still works locally; you just won't see the robot.
+
 ## Deploy (build & publish a multi-arch image)
 
 `build.sh` builds the `prod` stage for amd64 + arm64 with `docker buildx`.
