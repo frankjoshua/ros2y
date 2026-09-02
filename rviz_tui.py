@@ -14,8 +14,12 @@ import sys
 import threading
 import time
 
-import numpy as np
-import rclpy
+try:
+    import numpy as np
+    import rclpy
+except ModuleNotFoundError as e:
+    sys.exit(f"{e.name} not found — run this inside the dev container with ROS sourced "
+             "(devcontainer shell, or: source /opt/ros/$ROS_DISTRO/setup.bash)")
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.action import ActionClient
