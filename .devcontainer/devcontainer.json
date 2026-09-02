@@ -1,43 +1,24 @@
 {
-    "name": "ROS 2 Development Container",
-    "privileged": true,
-    "remoteUser": "ubuntu",
-    "build": {
-        "dockerfile": "../Dockerfile",
-        "context": "..",
-        "target": "dev",
-        "args": {
-            "USERNAME": "ubuntu"
-        }
-    },
-    "workspaceFolder": "/home/ws",
-    "workspaceMount": "source=${localWorkspaceFolder},target=/home/ws,type=bind",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "ms-vscode.cpptools",
-                "ms-vscode.cpptools-themes",
-                "twxs.cmake",
-                "donjayamanne.python-extension-pack",
-                "eamodio.gitlens",
-                "ms-iot.vscode-ros"
-            ]
-        }
-    },
-    "containerEnv": {
-        "DISPLAY": "unix:0",
-        "ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET",
-        "ROS_DOMAIN_ID": "0"
-    },
-    "runArgs": [
-        "--net=host",
-        "--pid=host",
-        "--ipc=host",
-        "-e", "DISPLAY=${env:DISPLAY}"
-    ],
-    "mounts": [
-        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
-        "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
-    ],
-    "postCreateCommand": "rosdep update && rosdep install --from-paths src --ignore-src -y"
+  "name": "ros2y",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "target": "dev"
+  },
+  "runArgs": ["--network=host", "--ipc=host", "--pid=host"],
+  "containerEnv": { "ROS_STATIC_PEERS": "100.96.218.61" },
+  "workspaceFolder": "/home/ws",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/ws,type=bind",
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/ubuntu/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=/home/ubuntu/.claude.json,type=bind",
+    "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind",
+    "source=${localEnv:HOME}/.local/bin/tokensave,target=${localEnv:HOME}/.local/bin/tokensave,type=bind",
+    "source=${localEnv:HOME}/.tokensave,target=/home/ubuntu/.tokensave,type=bind",
+    "source=${localEnv:HOME}/.local/state/herdr,target=${localEnv:HOME}/.local/state/herdr,type=bind",
+    "source=${localEnv:HOME}/development/workspace/herdr-nostr,target=${localEnv:HOME}/development/workspace/herdr-nostr,type=bind,readonly"
+  ],
+  "remoteUser": "ubuntu"
 }
