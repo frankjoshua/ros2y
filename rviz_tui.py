@@ -24,9 +24,9 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 
 try:
-    from nav2_msgs.action import FollowWaypoints
-except ImportError:  # nav2_msgs not installed; waypoint sending disabled
-    FollowWaypoints = None
+    from nav2_msgs.action import FollowWaypoints, NavigateToPose
+except ImportError:  # nav2_msgs not installed; goal/waypoint sending disabled
+    FollowWaypoints = NavigateToPose = None
 
 
 def yaw_of(q):
@@ -46,6 +46,7 @@ class RosBridge(Node):
             ("/scan", LaserScan, qos_profile_sensor_data),
             ("/pose", None, 10),
             ("/plan_smoothed", Path, 10),
+            ("/transformed_global_plan", Path, 10),
             ("/odom", Odometry, qos_profile_sensor_data),
         ]
         from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -60,7 +61,10 @@ class RosBridge(Node):
         self.create_subscription(TFMessage, "/tf", self._tf_cb, qos_profile_sensor_data)
 
         self.cmd_pub = self.create_publisher(Twist, "/cmd_vel_teleop", 10)
-        self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
+        # /goal_pose has no subscribers on this robot; goals go through the NavigateToPose action
+        self.nav_client = (
+            ActionClient(self, NavigateToPose, "navigate_to_pose") if NavigateToPose else None
+        )
         self.twist = Twist()
         self.teleop_active = False
         self.last_key_time = 0.0
@@ -128,9 +132,25 @@ class RosBridge(Node):
         return g
 
     def send_goal(self, wx, wy):
+        if not self.nav_client or not self.nav_client.wait_for_server(timeout_sec=1.0):
+            self.wp_status = "no navigate_to_pose server"
+            return
         me = self.pose_xyyaw()
         yaw = math.atan2(wy - me[1], wx - me[0]) if me else 0.0
-        self.goal_pub.publish(self._stamped(wx, wy, yaw))
+        goal = NavigateToPose.Goal()
+        goal.pose = self._stamped(wx, wy, yaw)
+        self.wp_status = "navigating"
+        fut = self.nav_client.send_goal_async(goal)
+
+        def on_goal(gh_fut):
+            gh = gh_fut.result()
+            if not gh.accepted:
+                self.wp_status = "goal rejected"
+                return
+            gh.get_result_async().add_done_callback(
+                lambda rf: setattr(self, "wp_status", "goal reached")
+            )
+        fut.add_done_callback(on_goal)
 
     def send_waypoints(self, pts):
         if not self.wp_client:
@@ -256,7 +276,7 @@ class MapView(Widget):
             px, py = self._w2p(wx, wy, w, h)
             buf[max(0, py - r):py + r + 1, max(0, px - r):px + r + 1] = color
 
-        plan = ros.msgs.get("/plan_smoothed")
+        plan = ros.msgs.get("/plan_smoothed") or ros.msgs.get("/transformed_global_plan")
         if plan:
             for p in plan.poses:
                 put(p.pose.position.x, p.pose.position.y, C_PLAN)
