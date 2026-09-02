@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Unicast discovery to the tx2 robot (multicast doesn't cross the tailnet, and the home
+     WiFi drops it too). Humble equivalent of Jazzy's ROS_STATIC_PEERS.
+     maxInitialPeersRange: how many participant ports to probe on the peer host. The default
+     is 4 - the robot runs ~12 participants, so with the default only rosbridge/slam/urdf
+     were discovered and /scan /odom /vel /map never showed up here. -->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_wide_peers</transport_id>
+      <type>UDPv4</type>
+      <maxInitialPeersRange>32</maxInitialPeersRange>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="tx2_peer" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>udp_wide_peers</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+      <builtin>
+        <initialPeersList>
+          <locator>
+            <udpv4>
+              <address>100.96.218.61</address>
+            </udpv4>
+          </locator>
+        </initialPeersList>
+      </builtin>
+    </rtps>
+  </participant>
+</profiles>

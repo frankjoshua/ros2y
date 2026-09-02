@@ -5,7 +5,9 @@
     "target": "dev"
   },
   "runArgs": ["--network=host", "--ipc=host", "--pid=host"],
-  "containerEnv": { "ROS_STATIC_PEERS": "100.96.218.61" },
+  // Robot over Tailscale (no multicast there). ROS_STATIC_PEERS is Iron+; Humble needs the
+  // Fast DDS initial-peers profile in fastdds_peers.xml instead.
+  "containerEnv": { "FASTRTPS_DEFAULT_PROFILES_FILE": "/home/ws/fastdds_peers.xml" },
   "workspaceFolder": "/home/ws",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/ws,type=bind",
   "features": {

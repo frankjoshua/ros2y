@@ -1,7 +1,9 @@
 # The base image pins the ROS 2 distro. Override it to target a different version, e.g.
 #   docker build --build-arg BASE_IMAGE=frankjoshua/ros2:humble ...
 # Everything below references $ROS_DISTRO (set by the base image), so nothing else needs editing.
-ARG BASE_IMAGE=frankjoshua/ros2:jazzy
+# Humble, to match the robot: Humble and Jazzy are NOT wire-compatible - a Jazzy node on the
+# same LAN/domain makes the robot's Humble nodes leak on every discovery message until OOM.
+ARG BASE_IMAGE=frankjoshua/ros2:humble
 FROM ${BASE_IMAGE} AS base
 # Single source of truth for shared dependencies. Both `dev` and `prod` inherit this stage,
 # so they cannot drift apart. Any dependency NOT declared in a src/*/package.xml must be added
@@ -15,10 +17,12 @@ RUN apt-get update && apt-get install -y \
 # sudo. VS Code remaps its UID to the host user so bind-mounted files aren't left root-owned.
 FROM base AS dev
 ARG USERNAME=ubuntu
+# 24.04-based images ship uid 1000 "ubuntu"; 22.04 (humble) doesn't, so create it when missing.
+RUN id -u $USERNAME 2>/dev/null || useradd -m -u 1000 -s /bin/bash -G dialout,video,plugdev $USERNAME
 # rviz_tui.py deps (dev-only tooling)
 RUN apt-get update && apt-get install -y ros-$ROS_DISTRO-nav2-msgs \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --break-system-packages --ignore-installed textual
+    && PIP_BREAK_SYSTEM_PACKAGES=1 pip install --ignore-installed textual  # env form: jammy pip lacks the flag
 RUN echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 # VS Code terminals open an interactive shell that bypasses the image ENTRYPOINT, so source the ROS
