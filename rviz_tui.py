@@ -476,7 +476,9 @@ def main():
         app.run()
     finally:
         ros.stop()
-        rclpy.shutdown()
+        rclpy.shutdown()       # unblocks the spin thread
+        spinner.join(timeout=3)  # let DDS wind down before interpreter teardown
+        ros.destroy_node()
 
 
 if __name__ == "__main__":
