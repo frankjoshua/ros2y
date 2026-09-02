@@ -77,6 +77,13 @@ class RosBridge(Node):
             ActionClient(self, FollowWaypoints, "follow_waypoints") if FollowWaypoints else None
         )
         self.wp_status = ""
+        self._goal_handles = []
+
+    def cancel_nav(self):
+        for gh in self._goal_handles:
+            gh.cancel_goal_async()
+        self._goal_handles.clear()
+        self.wp_status = "cancelled"
 
     def _tf_cb(self, msg):
         for t in msg.transforms:
@@ -135,12 +142,13 @@ class RosBridge(Node):
         g.pose.orientation.w = math.cos(yaw / 2)
         return g
 
-    def send_goal(self, wx, wy):
+    def send_goal(self, wx, wy, yaw=None):
         if not self.nav_client or not self.nav_client.wait_for_server(timeout_sec=1.0):
             self.wp_status = "no navigate_to_pose server"
             return
-        me = self.pose_xyyaw()
-        yaw = math.atan2(wy - me[1], wx - me[0]) if me else 0.0
+        if yaw is None:  # no drag: aim from robot toward the goal
+            me = self.pose_xyyaw()
+            yaw = math.atan2(wy - me[1], wx - me[0]) if me else 0.0
         goal = NavigateToPose.Goal()
         goal.pose = self._stamped(wx, wy, yaw)
         self.wp_status = "navigating"
@@ -151,6 +159,7 @@ class RosBridge(Node):
             if not gh.accepted:
                 self.wp_status = "goal rejected"
                 return
+            self._goal_handles.append(gh)
             gh.get_result_async().add_done_callback(
                 lambda rf: setattr(self, "wp_status", "goal reached")
             )
@@ -165,8 +174,9 @@ class RosBridge(Node):
             return
         goal = FollowWaypoints.Goal()
         prev = self.pose_xyyaw() or (0, 0, 0)
-        for wx, wy in pts:
-            yaw = math.atan2(wy - prev[1], wx - prev[0])
+        for wx, wy, yaw in pts:
+            if yaw is None:
+                yaw = math.atan2(wy - prev[1], wx - prev[0])
             goal.poses.append(self._stamped(wx, wy, yaw))
             prev = (wx, wy, yaw)
         self.wp_status = f"following {len(pts)} wp"
@@ -177,6 +187,7 @@ class RosBridge(Node):
             if not gh.accepted:
                 self.wp_status = "rejected"
                 return
+            self._goal_handles.append(gh)
             gh.get_result_async().add_done_callback(
                 lambda rf: setattr(self, "wp_status", "waypoints done")
             )
@@ -297,10 +308,14 @@ class MapView(Widget):
             keep = (pxs >= 0) & (pxs < w) & (pys >= 0) & (pys < h)
             buf[pys[keep], pxs[keep]] = C_SCAN
 
-        for i, (wx, wy) in enumerate(self.st["waypoints"]):
+        for wx, wy, _yaw in self.st["waypoints"]:
             put(wx, wy, C_WP, r=1)
         if self.st["goal"]:
-            put(*self.st["goal"], C_GOAL, r=1)
+            gx, gy, gyaw = self.st["goal"]
+            put(gx, gy, C_GOAL, r=1)
+            if gyaw is not None:
+                for d in np.linspace(0, 0.4, 6):
+                    put(gx + d * math.cos(gyaw), gy + d * math.sin(gyaw), C_GOAL)
 
         if me:
             rx, ry, ryaw = me
@@ -335,15 +350,27 @@ class MapView(Widget):
                 run_start = x
         return Strip(segs)
 
-    def on_mouse_down(self, event):
+    def _event_world(self, event):
         w, h = self.size.width, self.size.height * 2
-        wx = self.center[0] + (event.x - w / 2) / self.ppm
-        wy = self.center[1] - (event.y * 2 - h / 2) / self.ppm
+        return (self.center[0] + (event.x - w / 2) / self.ppm,
+                self.center[1] - (event.y * 2 - h / 2) / self.ppm)
+
+    # rviz-style: press = position, drag before release = heading, plain click = auto-aim
+    def on_mouse_down(self, event):
+        self._press = self._event_world(event)
+
+    def on_mouse_up(self, event):
+        if not getattr(self, "_press", None):
+            return
+        wx, wy = self._press
+        self._press = None
+        ux, uy = self._event_world(event)
+        yaw = math.atan2(uy - wy, ux - wx) if math.hypot(ux - wx, uy - wy) > 0.15 else None
         if self.st["wp_mode"]:
-            self.st["waypoints"].append((wx, wy))
+            self.st["waypoints"].append((wx, wy, yaw))
         else:
-            self.st["goal"] = (wx, wy)
-            self.ros.send_goal(wx, wy)
+            self.st["goal"] = (wx, wy, yaw)
+            self.ros.send_goal(wx, wy, yaw)
 
     def pan(self, dx, dy):
         self.follow = False
@@ -400,6 +427,8 @@ class RvizTui(App):
             *(f" {t:<16}{age(t)}" for t in ("/map", "/scan", "/pose", "/plan_smoothed", "/odom")),
             "",
             "w/s a/d drive · space stop",
+            "click goal · drag sets heading",
+            "esc cancel nav",
             "m wp-mode · enter send · c clear",
             "f follow · hjkl pan · +- zoom",
         ]
@@ -424,6 +453,8 @@ class RvizTui(App):
             ros.send_waypoints(self.state["waypoints"])
         elif k == "c":
             self.state["waypoints"].clear()
+        elif k == "escape":
+            ros.cancel_nav()
         elif k == "f":
             mv.follow = True
         elif k in "hjkl":
